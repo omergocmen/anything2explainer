@@ -2,6 +2,7 @@ import React from 'react';
 import {AbsoluteFill, Sequence} from 'remotion';
 import {SUBS} from './subs';
 import {fitSize, textW} from './textfit';
+import {FONT_HEAVY, LANG} from './lib';
 
 /**
  * 字幕：白 #FFF Noto Sans SC 700 44px、居中 x=640、CSS top 637（墨迹 y644–684）、黑描边 4px（16+8+4 方向 text-shadow 环，避免 -webkit-text-stroke 的尖角刺）、
@@ -21,16 +22,16 @@ export const SubtitleLine: React.FC<{text: string; top?: number; left?: number; 
   // 这是兜底不是设计，tts_build.py 生成时已按安全区宽度打过 ⚠，正确做法是用 | 再切一刀。
   const size = fitSize(text, SUB_MAX_W, SUB_STYLE.fontSize, 34);
   const lh = 1.2;
-  const font: React.CSSProperties = {fontFamily: `'Noto Sans SC', 'PingFang SC', sans-serif`, fontWeight: SUB_STYLE.weight, fontSize: size, lineHeight: lh, color, textShadow: strokeShadow(stroke)};
+  const font: React.CSSProperties = {fontFamily: FONT_HEAVY, fontWeight: SUB_STYLE.weight, fontSize: size, lineHeight: lh, color, textShadow: strokeShadow(stroke)};
   if (textW(text, size) <= SUB_MAX_W) {
-    return <div style={{position: 'absolute', left, top, transform: 'translateX(-50%)', whiteSpace: 'nowrap', ...font}}>{text}</div>;
+    return <div lang={LANG} style={{position: 'absolute', left, top, transform: 'translateX(-50%)', whiteSpace: 'nowrap', ...font}}>{text}</div>;
   }
   // 折行兜底：放一个两行高的盒子，底边贴在单行字幕的原位（flex 列向、底对齐）。
   // 这样不管 Chromium 实际折成 1 行还是 2 行（估宽和真实排版可能差几个百分点），最后一行都落在字幕带里；
   // 真折出第 3 行也只会向上溢出到内容区，不会压进进度条。
   const lineH = Math.round(size * lh);
   return (
-    <div style={{position: 'absolute', left, top: top - lineH, transform: 'translateX(-50%)', width: SUB_MAX_W, height: lineH * 2, display: 'flex', flexDirection: 'column', justifyContent: 'flex-end', textAlign: 'center', whiteSpace: 'normal', ...font}}>
+    <div lang={LANG} style={{position: 'absolute', left, top: top - lineH, transform: 'translateX(-50%)', width: SUB_MAX_W, height: lineH * 2, display: 'flex', flexDirection: 'column', justifyContent: 'flex-end', textAlign: 'center', whiteSpace: 'normal', overflowWrap: 'anywhere', ...font}}>
       <div>{text}</div>
     </div>
   );

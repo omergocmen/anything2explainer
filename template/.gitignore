@@ -5,3 +5,5 @@ fin_frames/
 stills/
 public/assets/*/audio.wav
 audio/cache/
+script/subtitles.srt
+script/subtitles.vtt

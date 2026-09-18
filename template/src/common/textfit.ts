@@ -19,7 +19,7 @@ export const EM_TECH = 0.92;    // Exo 2（英文技术词，斜体窄）
 /** 估算一段文字的宽度，单位 em（1em = fontSize px） */
 export const textEm = (s: string, emScale = 1): number => {
   let em = 0;
-  for (const ch of s) {
+  for (const ch of s.normalize('NFC')) {
     const c = ch.codePointAt(0) ?? 32;
     if (c >= 0x2000) em += 1;                              // CJK、全角标点，以及 U+2000 起的标点 / 箭头 / 数学符号
     else if (ch === ' ') em += 0.227;

@@ -65,3 +65,7 @@
 - **每个镜头最多 1 处 glitch，且只用于该镜头的重点词**（下表）；其余一切文字/标签/胶囊/数字/图标入场一律用 `SoftIn`（`ui.tsx`，8 帧淡入 + 10px 上浮，签名与 GlitchIn 相同可直接替换）或 fadeIn/slideUp/scaleIn。HUD 换词由 G0 用 SoftIn。
 - 白名单在本片 `分镜表.md` 末尾「全局约束」给出（每镜头最多一个重点词；样片实例见 skill `examples/rag/AGENT_RAG_BUILD_RULES.md` §8）。**不在表内的镜头一处 glitch 都不要。**
 - 用 `rgbSplit/slices` 的重口味 glitch 只允许片头、章节卡标题、主角登场、片尾大字。
+
+## Turkish language checks
+
+For `VIDEO.lang === 'tr'`, use `FONT_HEAVY` (bundled Noto Sans), `SQUEEZE=1` and `TEXT_DY=0`. Preserve `ÇĞIİÖŞÜçğıiöşü`; do not use ASCII transliteration or English case conversion. Keep subtitles ≤42 characters, chapter names short, and localize the HUD/title/rails. Verify the actual Turkish audio against subtitle changes, including apostrophized suffixes and any estimated boundary warnings. See `narration-storyboard.md` §2.6 and `style-guide.md` §3.2.

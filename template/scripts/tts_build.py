@@ -4,15 +4,18 @@
   # CHAPTER <n> <标题>      章节标记（章节前自动加 chapter_gap 帧空白）
   ## gap <帧数>             在下一句前额外插入空白帧
   一句话|按竖线分成字幕短句            → 竖线只切字幕，不影响朗读
-                                       每块预算：中文 ≤16 字 / 英文 ≤48 字符（超了会打 ⚠ 并自动缩字号）
-                                       块首尾空格会去掉；英文片把块用空格拼回整句给 TTS（"a|b" 与 "a | b" 等价），中文直接拼接
+                                       每块预算：中文 ≤16 字 / 英文 ≤48 字符 / Turkish ≤42 characters
+                                       English/Turkish chunks join with spaces; Chinese chunks join directly.
 输出：
   public/assets/<slug>/audio.wav（48k 立体声 16bit；slug 读 src/config.ts）
   script/timeline.json / timeline.md
+  script/subtitles.srt / subtitles.vtt (UTF-8; same frame intervals as burned-in subtitles)
   src/common/subs.ts（字幕表）、src/common/timeline.ts（TOTAL_FRAMES / CHAPTER_STARTS / SENTENCES）
 逐句（或逐字幕块）缓存于 audio/cache/，改一句只重合成一句；缓存键含引擎参数与本地模型文件的指纹（路径 + 大小 + mtime + 内容头），换模型自动失效。
 
-TTS 引擎（`TTS_ENGINE`，默认 `auto` = 按解说词语言选；**跑之前先问用户有没有偏好的 TTS**，见 SKILL.md 确认点 3）：
+TTS 引擎（`TTS_ENGINE`，默认 `auto` = src/config.ts VIDEO.lang；**跑之前先问用户有没有偏好的 TTS**，见 SKILL.md 确认点 3）：
+  Turkish: lang: 'tr' → edge, VOICE=tr-TR-AhmetNeural RATE=+0%; optional tr-TR-EmelNeural.
+           Explicit config wins, including ASCII-only Turkish. Kokoro does not support Turkish.
   edge     中文默认。edge-tts 云端合成，有词级边界 → 字幕节拍最准。VOICE=zh-CN-YunxiNeural RATE=+8%
            词边界要显式请求（boundary='WordBoundary'，7.2.0 起的默认值不给），否则字幕起点会静默退化成插值。
   kokoro   英文默认。kokoro-82m 本地推理（`pip install kokoro soundfile` + espeak-ng：macOS `brew install espeak-ng` / Linux `apt install espeak-ng`）。
@@ -27,20 +30,28 @@ TTS 引擎（`TTS_ENGINE`，默认 `auto` = 按解说词语言选；**跑之前�
   用户有别的 TTS 偏好时不走本脚本：让他给成品配音 wav，按逐句/逐块时间轴手填 timeline.ts 与 subs.ts。
 其它环境变量：GAP/CHAPTER_GAP/LEAD/TAIL（帧）、EDGE_TRIES（edge 每句最多试几次，端点会间歇性返回空音频）。
 """
-import asyncio, hashlib, json, os, re, subprocess, sys
+import asyncio, hashlib, html, json, os, re, subprocess, sys, unicodedata
+from pathlib import Path
 import numpy as np
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 REM = ROOT
-_cfg = open(f'{ROOT}/src/config.ts', encoding='utf-8').read()
+_cfg = Path(f'{ROOT}/src/config.ts').read_text(encoding='utf-8-sig')
 SLUG = re.search(r"slug:\s*'([^']+)'", _cfg).group(1)
-_m = re.search(r"lang:\s*'(zh|en)'", _cfg)
+_m = re.search(r'''^\s*lang:\s*['"]([^'"]+)['"]''', _cfg, re.M)
 CFG_LANG = _m.group(1) if _m else 'zh'
+LANG_DEFAULTS = {
+    'zh': ('edge', 'zh-CN-YunxiNeural', '+8%'),
+    'en': ('kokoro', 'en-US-AndrewNeural', '+0%'),
+    'tr': ('edge', 'tr-TR-AhmetNeural', '+0%'),
+}
+if CFG_LANG not in LANG_DEFAULTS:
+    raise SystemExit(f"Unsupported VIDEO.lang={CFG_LANG!r}; choose 'zh', 'en' or 'tr' in src/config.ts.")
 FPS = 30
 SR = 48000
 ENGINE = os.environ.get('TTS_ENGINE', 'auto')
-VOICE = os.environ.get('VOICE', 'zh-CN-YunxiNeural')
-RATE = os.environ.get('RATE', '+8%')
+VOICE = os.environ.get('VOICE', LANG_DEFAULTS[CFG_LANG][1])
+RATE = os.environ.get('RATE', LANG_DEFAULTS[CFG_LANG][2])
 KOKORO_VOICE = os.environ.get('KOKORO_VOICE', 'am_liam')
 KOKORO_LANG = os.environ.get('KOKORO_LANG', 'a')       # a=American English, b=British
 KOKORO_SPEED = float(os.environ.get('KOKORO_SPEED', 1.0))
@@ -80,7 +91,6 @@ CHAPTER_GAP = int(os.environ.get('CHAPTER_GAP', 45))  # 章节前空白帧
 LEAD = int(os.environ.get('LEAD', 40))        # 片头静音帧
 TAIL = int(os.environ.get('TAIL', 90))        # 片尾静音帧
 CACHE = f'{ROOT}/audio/cache'
-os.makedirs(CACHE, exist_ok=True)
 if ENGINE not in ('auto', 'edge', 'kokoro', 'piper', 'kokoro_onnx'):
     raise SystemExit(f'未知 TTS_ENGINE={ENGINE}（可选 auto / edge / kokoro / piper / kokoro_onnx）')
 
@@ -90,8 +100,8 @@ def parse(path):
     chap = 0
     chap_title = ''
     pending_gap = 0
-    for raw in open(path, encoding='utf-8'):
-        line = raw.strip()
+    for raw in Path(path).read_text(encoding='utf-8-sig').splitlines():
+        line = unicodedata.normalize('NFC', raw.strip())
         if not line:
             continue
         m = re.match(r'^#\s*CHAPTER\s+(\d+)\s+(.*)$', line)
@@ -111,15 +121,17 @@ def parse(path):
 
 def cache_path(text, ext):
     # 本地模型引擎用文件指纹而不是文件名：不同目录下的同名 model.onnx、原地换掉的模型都要各自缓存
-    sig = f'{ENGINE}|{VOICE}|{RATE}|{KOKORO_VOICE}|{KOKORO_ONNX_VOICE}|{KOKORO_ONNX_LANG}|{KOKORO_ONNX_FP}|{PIPER_FP}|{KOKORO_LANG}|{KOKORO_SPEED}|{text}'
+    sig = f'v2|{CFG_LANG}|{ENGINE}|{VOICE}|{RATE}|{KOKORO_VOICE}|{KOKORO_ONNX_VOICE}|{KOKORO_ONNX_LANG}|{KOKORO_ONNX_FP}|{PIPER_FP}|{KOKORO_LANG}|{KOKORO_SPEED}|{text}'
     return f'{CACHE}/{hashlib.sha1(sig.encode()).hexdigest()[:16]}{ext}'
 
 
-def detect_lang(items):
-    """解说词里 CJK 占比 ≥20% → 'zh'，否则 'en'。"""
-    txt = ''.join(it['raw'] for it in items if it['type'] == 'sent')
-    cjk = sum(1 for c in txt if '一' <= c <= '鿿')
-    return 'zh' if cjk >= 0.2 * max(1, len(txt)) else 'en'
+def resolve_engine(lang, engine):
+    """VIDEO.lang is authoritative: ASCII-only Turkish cannot be detected reliably."""
+    engine = LANG_DEFAULTS[lang][0] if engine == 'auto' else engine
+    if lang == 'tr' and engine in ('kokoro', 'kokoro_onnx'):
+        raise SystemExit("Turkish is not supported by Kokoro. Use TTS_ENGINE=edge with "
+                         "VOICE=tr-TR-AhmetNeural (or tr-TR-EmelNeural), or a Turkish Piper model.")
+    return engine
 
 
 # 字幕块宽度预判：与 src/common/textfit.ts 用同一张 em 宽表（字体 fontTools 实测），
@@ -127,13 +139,13 @@ def detect_lang(items):
 # 授稿建议仍是每块中文 ≤16 字 / 英文 ≤48 字符（见 narration-storyboard.md）。
 SUB_MAX_W = 1160
 SUB_SIZE = 44
-SUB_BUDGET = {'zh': '16 字', 'en': '48 字符'}
+SUB_BUDGET = {'zh': '16 字', 'en': '48 characters', 'tr': '42 characters'}
 
 
 def text_em(s):
     """与 src/common/textfit.ts 的 textEm() 同一张表（改一处要同步另一处）。"""
     t = 0.0
-    for ch in s:
+    for ch in unicodedata.normalize('NFC', s):
         c = ord(ch)
         if c >= 0x2000:
             t += 1.0                     # CJK / 全角，以及 U+2000 起的标点 / 箭头 / 数学符号（— … “ ” → ∑ 在 Noto 里都是 1em）
@@ -171,7 +183,7 @@ async def synth_edge(text):
     import edge_tts
     mp3 = cache_path(text, '.mp3'); js = cache_path(text, '.json')
     if os.path.exists(mp3) and os.path.exists(js):
-        return mp3, json.load(open(js))
+        return mp3, json.loads(Path(js).read_text(encoding='utf-8'))
     for attempt in range(1, EDGE_TRIES + 1):
         audio = bytearray(); words = []
         try:
@@ -192,8 +204,8 @@ async def synth_edge(text):
             raise SystemExit(f'edge-tts 试了 {EDGE_TRIES} 次仍拿不到音频（{why}）：{text[:30]}…')
         print(f'  ⚠ edge-tts 第 {attempt} 次失败（{why}），{1.5 * attempt:.1f}s 后重试：{text[:16]}…')
         await asyncio.sleep(1.5 * attempt)
-    open(mp3, 'wb').write(audio)
-    json.dump(words, open(js, 'w'), ensure_ascii=False)
+    Path(mp3).write_bytes(audio)
+    Path(js).write_text(json.dumps(words, ensure_ascii=False), encoding='utf-8')
     return mp3, words
 
 
@@ -304,42 +316,64 @@ def trim_edges(x, thr=0.004):
     return x[a:b], a / SR
 
 
+def alignment_text(text):
+    """Normalize boundary text without losing Turkish dotted/dotless I distinctions."""
+    text = unicodedata.normalize('NFC', html.unescape(text))
+    if CFG_LANG == 'tr':
+        text = text.translate(str.maketrans({'I': 'ı', 'İ': 'i'}))
+    return ''.join(c for c in text.casefold() if c.isalnum())
+
+
 def chunk_starts(tts_text, chunks, words, lead_cut, dur, sep=''):
-    """按 | 切出的字幕短句 → 每块在句内的起始秒。word 边界按字符游标对到原句。
-    tts_text == sep.join(chunks)：英文 sep=' '，游标要跳过块间的那个空格。"""
-    # 每个字符的起始时间（按 word 边界填充）
+    """Match normalized word boundaries to source offsets, including apostrophized suffixes."""
     char_t = [None] * len(tts_text)
+    normalized = []
+    offsets = []
+    for i, ch in enumerate(tts_text):
+        folded = alignment_text(ch)
+        normalized.append(folded)
+        offsets.extend([i] * len(folded))
+    normalized = ''.join(normalized)
     cur = 0
     for w in words:
-        wt = re.sub(r'[\s，。、！？：；“”（）,.!?:;()\-—…]', '', w['text'])
+        wt = alignment_text(w['text'])
         if not wt:
             continue
-        p = tts_text.find(wt, cur)
+        p = normalized.find(wt, cur)
         if p < 0:
-            p = tts_text.find(wt[0], cur)
-            if p < 0:
-                continue
-        for i in range(p, min(len(tts_text), p + len(wt))):
-            char_t[i] = (w['t'] - lead_cut, w['d'])
+            continue
+        for i in range(p, p + len(wt)):
+            char_t[offsets[i]] = w['t'] - lead_cut
         cur = p + len(wt)
-    # 每块首字时间
     starts = []
+    positions = []
     pos = 0
     for c in chunks:
-        seg = tts_text[pos:pos + len(c)]
+        positions.append(pos)
         st = None
         for i in range(pos, pos + len(c)):
             if char_t[i] is not None:
-                st = char_t[i][0]; break
+                st = char_t[i]; break
         starts.append(st)
         pos += len(c) + len(sep)
-    # 兜底：无边界的块按字数线性插值
-    for i, st in enumerate(starts):
-        if st is None:
-            prev = starts[i - 1] if i > 0 and starts[i - 1] is not None else 0.0
-            starts[i] = prev + dur * len(chunks[i - 1]) / max(1, len(tts_text)) if i > 0 else 0.0
+    if not starts:
+        return []
     starts[0] = 0.0
-    return [max(0.0, s) for s in starts]
+    missing = [i for i, st in enumerate(starts) if st is None]
+    if missing:
+        print(f'Warning: {len(missing)} subtitle boundary/boundaries could not be matched; '
+              'timing is estimated between known anchors. Check the preview.')
+    # Interpolate only between known anchors; never let a missing match run past the next block.
+    anchors = [(i, st) for i, st in enumerate(starts) if st is not None] + [(len(chunks), dur)]
+    positions.append(len(tts_text))
+    for (a, start), (b, end) in zip(anchors, anchors[1:]):
+        for i in range(a + 1, b):
+            fraction = (positions[i] - positions[a]) / max(1, positions[b] - positions[a])
+            starts[i] = start + fraction * (end - start)
+    previous = 0.0
+    for i, start in enumerate(starts):
+        starts[i] = previous = min(dur, max(previous, start))
+    return starts
 
 
 async def synth_sentence(chunks, sep=''):
@@ -365,18 +399,41 @@ async def synth_sentence(chunks, sep=''):
     return x, starts, len(x) / SR
 
 
+def write_subtitle_files(subs, directory):
+    """Export the same 1-based, inclusive frame intervals used by Remotion as UTF-8 SRT/VTT."""
+    def timestamp(frame, separator):
+        ms = round(frame * 1000 / FPS)
+        seconds, ms = divmod(ms, 1000)
+        minutes, seconds = divmod(seconds, 60)
+        hours, minutes = divmod(minutes, 60)
+        return f'{hours:02d}:{minutes:02d}:{seconds:02d}{separator}{ms:03d}'
+
+    for extension, separator in [('srt', ','), ('vtt', '.')]:
+        with open(f'{directory}/subtitles.{extension}', 'w', encoding='utf-8') as f:
+            if extension == 'vtt':
+                f.write('WEBVTT\n\n')
+            for i, sb in enumerate(subs, 1):
+                text = sb['text']
+                if extension == 'vtt':
+                    text = html.escape(text, quote=False)
+                f.write(f"{i}\n{timestamp(sb['from'] - 1, separator)} --> "
+                        f"{timestamp(sb['to'], separator)}\n{text}\n\n")
+
+
 async def main(narr):
     global ENGINE
     items = parse(narr)
-    lang = detect_lang(items)
-    if ENGINE == 'auto':
-        ENGINE = 'edge' if lang == 'zh' else 'kokoro'
-        print(f'解说词语言 {lang} → TTS_ENGINE={ENGINE}（有偏好请显式传 TTS_ENGINE=…）')
-    if lang != CFG_LANG:
-        print(f"⚠ src/config.ts 的 lang: '{CFG_LANG}' 与解说词语言 {lang} 不一致——改过来，"
-              f"否则标题压窄与居中基线会按错的语言算")
+    lang = CFG_LANG
+    ENGINE = resolve_engine(lang, ENGINE)
+    if lang == 'tr' and ENGINE == 'edge' and not VOICE.startswith('tr-TR-'):
+        raise SystemExit('Turkish narration requires a tr-TR voice. Set VOICE=tr-TR-AhmetNeural '
+                         'or VOICE=tr-TR-EmelNeural (or unset VOICE to use the default).')
+    if not any(it['type'] == 'sent' and it['raw'].replace('|', '').strip() for it in items):
+        raise SystemExit('Narration contains no spoken text.')
+    os.makedirs(CACHE, exist_ok=True)
+    print(f'VIDEO.lang={lang} → TTS_ENGINE={ENGINE}')
     # 字幕块拼回整句给 TTS 时的连接符：英文词与词之间要有空格（否则 "powerful|but" 会被念成 powerfulbut），中文直接拼
-    sep = ' ' if lang == 'en' else ''
+    sep = '' if lang == 'zh' else ' '
     t = LEAD / FPS
     audio_parts = []  # (start_sec, np.array)
     sentences = []; chapters = []
@@ -395,10 +452,18 @@ async def main(narr):
         tts_text = sep.join(chunks)
         x, starts, dur = await synth_sentence(chunks, sep)
         sid += 1
-        subs = [(t + starts[i], t + (starts[i + 1] if i + 1 < len(starts) else dur)) for i in range(len(chunks))]
         f0 = int(round(t * FPS)) + 1; f1 = int(round((t + dur) * FPS))
+        if f1 - f0 + 1 < len(chunks):
+            raise SystemExit(f'Audio is too short for {len(chunks)} subtitle blocks: {tts_text}')
+        boundaries = [f0]
+        for i in range(1, len(chunks)):
+            # At least one frame per block, leaving enough frames for all remaining blocks.
+            boundaries.append(min(f1 - (len(chunks) - i) + 1,
+                                  max(boundaries[-1] + 1, int(round((t + starts[i]) * FPS)) + 1)))
+        boundaries.append(f1 + 1)
         sentences.append({'id': f'S{sid:02d}', 'chapter': it['chapter'], 'from': f0, 'to': f1, 'text': tts_text,
-                          'subs': [{'from': int(round(a * FPS)) + 1, 'to': int(round(b * FPS)), 'text': c} for c, (a, b) in zip(chunks, subs)]})
+                          'subs': [{'from': boundaries[i], 'to': boundaries[i + 1] - 1, 'text': c}
+                                   for i, c in enumerate(chunks)]})
         audio_parts.append((t, x))
         total_chars += len(re.sub(r'[，。、！？：；“”（）,.!?:;()\-—…\s]', '', tts_text))
         total_words += len(tts_text.split()); speech_sec += dur
@@ -433,6 +498,11 @@ async def main(narr):
               f'（会自动缩字号；建议每块 {SUB_BUDGET[lang]}，用 | 再切一刀）：')
         for sb, w in over[:5]:
             print(f"    f{sb['from']} (≈{w:.0f}px{'，会折两行' if w > SUB_MAX_W * 1.3 else ''}) {sb['text']}")
+    if lang == 'tr':
+        for sb in all_subs:
+            if len(sb['text']) > 42:
+                print(f"Warning: Turkish subtitle f{sb['from']} exceeds 42 characters; "
+                      f"split at a word boundary with |: {sb['text']}")
     # 输出
     tl = {'fps': FPS, 'total_frames': total, 'engine': ENGINE,
           'voice': {'edge': VOICE, 'piper': PIPER_VOICE_NAME, 'kokoro_onnx': KOKORO_ONNX_VOICE}.get(ENGINE, KOKORO_VOICE),
@@ -442,8 +512,9 @@ async def main(narr):
           'speech_sec': round(speech_sec, 2)}
     unit, cnt = ('字', total_chars) if lang == 'zh' else ('词', total_words)
     os.makedirs(f'{ROOT}/script', exist_ok=True)
-    json.dump(tl, open(f'{ROOT}/script/timeline.json', 'w'), ensure_ascii=False, indent=1)
-    with open(f'{ROOT}/script/timeline.md', 'w') as f:
+    Path(f'{ROOT}/script/timeline.json').write_text(json.dumps(tl, ensure_ascii=False, indent=1), encoding='utf-8')
+    write_subtitle_files(all_subs, f'{ROOT}/script')
+    with open(f'{ROOT}/script/timeline.md', 'w', encoding='utf-8') as f:
         f.write(f"# 时间轴（{ENGINE} · {tl['voice']} {tl['rate']}，共 {total} 帧 = {total/FPS:.1f}s，{cnt} {unit}，语速 {cnt/max(1e-6,speech_sec):.2f} {unit}/s）\n\n")
         f.write('| 句 | 章 | 帧 from–to | 时长 | 文本（| 为字幕切分） |\n|---|---|---|---|---|\n')
         ci = {c['from']: c for c in chapters}
@@ -459,13 +530,13 @@ async def main(narr):
     # （手工拼引号会被解说词里的 \ ' ` ${} 破坏语法，甚至把文本写成代码）
     def lit(s):
         return json.dumps(s, ensure_ascii=False)
-    with open(f'{REM}/src/common/subs.ts', 'w') as f:
+    with open(f'{REM}/src/common/subs.ts', 'w', encoding='utf-8') as f:
         f.write('// 自动生成：scripts/tts_build.py（词边界 / 逐块合成 → 字幕块）。手改请改 script/narration.txt 后重跑。\n')
         f.write("export type SubEntry = {from: number; to: number; text: string};\nexport const SUBS: SubEntry[] = [\n")
         for sb in all_subs:
             f.write(f"  {{from: {sb['from']}, to: {sb['to']}, text: {lit(sb['text'])}}},\n")
         f.write('];\n')
-    with open(f'{REM}/src/common/timeline.ts', 'w') as f:
+    with open(f'{REM}/src/common/timeline.ts', 'w', encoding='utf-8') as f:
         f.write('// 自动生成：scripts/tts_build.py。帧号 1 起含端点。\n')
         f.write(f'export const TOTAL_FRAMES = {total};\n')
         f.write('export const CHAPTER_STARTS: Array<{n: number; title: string; from: number}> = [\n')

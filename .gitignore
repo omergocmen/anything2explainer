@@ -15,5 +15,9 @@ template/分镜表.md
 template/render.done
 template/fin_count.txt
 .synapse/
+.venv/
+.qa/
+template/script/subtitles.srt
+template/script/subtitles.vtt
 
 __pycache__/

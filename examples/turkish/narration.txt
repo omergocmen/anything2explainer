@@ -1,0 +1,4 @@
+# CHAPTER 1 Türkçe
+İstanbul'da güneş doğuyor.|Işık, çığ ve yağmur.|Öğrenmek güzel bir şey.
+# CHAPTER 2 Altyazı
+Merhaba|bu bir test.|Türkçe ses ve altyazı birlikte ilerliyor.

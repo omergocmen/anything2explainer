@@ -1,27 +1,9 @@
-# 字体许可
-
-本目录随附的五款字体均以 **SIL Open Font License, Version 1.1** 分发，许可全文见本文件末尾。
-各字体的版权与保留字体名（取自字体自身的 name 表）：
-
-| 文件 | 字体 | 版权声明 |
-|---|---|---|
-| `NotoSansSC.ttf` | Noto Sans SC | (c) 2014-2021 Adobe (http://www.adobe.com/), with Reserved Font Name 'Source'. |
-| `NotoSans.ttf` | Noto Sans (Turkish body, labels and subtitles) | Copyright 2022 The Noto Project Authors (https://github.com/notofonts/latin-greek-cyrillic). See [NotoSans-OFL.txt](NotoSans-OFL.txt). |
-| `Orbitron[wght].ttf` | Orbitron | Copyright 2018 The Orbitron Project Authors (https://github.com/theleagueof/orbitron), with Reserved Font Name: "Orbitron". |
-| `Exo2-Italic.ttf` | Exo 2 | Copyright 2013 The Exo 2 Project Authors (https://github.com/googlefonts/Exo-2.0) |
-| `Audiowide-Regular.ttf` | Audiowide | Copyright (c) 2012 by Brian J. Bonislawsky DBA Astigmatic (AOETI) (astigma@astigmatic.com), with Reserved Font Name "Audiowide" |
-
-`NotoSans.ttf` is the unmodified variable font `NotoSans[wdth,wght].ttf` from [Google Fonts / Noto Sans](https://github.com/google/fonts/tree/main/ofl/notosans), renamed only at the file level. Its original license is included as `NotoSans-OFL.txt`.
-
-要点（OFL 1.1）：可自由使用、嵌入、修改、随软件一起再分发（含商用），但 ①字体本身不得单独售卖；②再分发时必须附带上面的版权声明与本许可；③修改版不得使用保留字体名。渲染出的视频成品不受限制。
-
----
-
-Copyright (c) <dates>, <Copyright Holder> (<URL|email>), with Reserved Font Name <Reserved Font Name>.
+Copyright 2022 The Noto Project Authors (https://github.com/notofonts/latin-greek-cyrillic)
 
 This Font Software is licensed under the SIL Open Font License, Version 1.1.
 This license is copied below, and is also available with a FAQ at:
-https://openfontlicense.org
+https://scripts.sil.org/OFL
+
 
 -----------------------------------------------------------
 SIL OPEN FONT LICENSE Version 1.1 - 26 February 2007

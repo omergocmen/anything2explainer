@@ -41,7 +41,7 @@ for sid, (a, b) in sorted(sb_shots.items()):
         if (ba, bb) != (a, b):
             print(f'  ✗ {sid} ({g}) 区间 {ba}–{bb} ≠ 分镜表 {a}–{b}'); problems += 1
 import json
-_tl = json.load(open(f'{ROOT}/script/timeline.json'))
+_tl = json.load(open(f'{ROOT}/script/timeline.json', encoding='utf-8'))
 _chapter_starts = {c['from'] for c in _tl['chapters']}
 ids = sorted(built, key=lambda k: built[k][0])
 for p, q in zip(ids, ids[1:]):

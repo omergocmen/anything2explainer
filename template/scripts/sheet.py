@@ -9,7 +9,7 @@ rel = os.path.relpath(d, os.path.dirname(os.path.abspath(out)))
 tl = None
 tlp = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'script', 'timeline.json')
 if os.path.exists(tlp):
-    tl = json.load(open(tlp))
+    tl = json.load(open(tlp, encoding='utf-8'))
 def sent_at(n):
     if not tl: return ''
     for s in tl['sentences']:
@@ -23,5 +23,5 @@ for i in range(0, len(files), step):
 html = f'''<!doctype html><meta charset="utf-8"><title>sheet</title>
 <style>body{{background:#111;color:#ddd;font:12px/1.4 -apple-system,sans-serif;margin:8px}} .g{{display:grid;grid-template-columns:repeat({cols},1fr);gap:6px}} .c img{{width:100%;display:block}} .l{{padding:2px 0 6px}} .l span{{color:#9a8}}</style>
 <h3>成片缩略图 · 每 {step} 帧一张 · 共 {len(files)} 帧</h3><div class="g">{''.join(cells)}</div>'''
-open(out, 'w').write(html)
+open(out, 'w', encoding='utf-8').write(html)
 print('sheet', out, len(cells), 'cells')

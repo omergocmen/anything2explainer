@@ -47,22 +47,24 @@ export const DirBlur: React.FC<{bx: number; by: number; style?: React.CSSPropert
   );
 };
 
-// ---- 字体（全部随模板附带，OFL 许可；Noto Sans SC 含完整拉丁字形，英文片同样用它做正文/字幕）----
-export const FONT_HEAVY = `'Noto Sans SC', 'PingFang SC', 'Hiragino Sans GB', sans-serif`; // 全部中文：标题 900（常 scaleX .8–.85 压窄）、标签 600–800、字幕 700
+// Bundled OFL fonts. Noto Sans SC lacks ĞİŞğış; Turkish uses Noto Sans throughout.
+export const FONT_HEAVY = VIDEO.lang === 'tr'
+  ? `'Noto Sans', sans-serif`
+  : `'Noto Sans SC', 'Noto Sans', 'PingFang SC', 'Hiragino Sans GB', sans-serif`;
 export const FONT_TECH = `'Exo 2', 'Helvetica Neue', sans-serif`; // 英文技术词：紫色粗斜体 + scaleX .8
 export const FONT_WIDE = `'Audiowide', 'Orbitron', sans-serif`; // 宽体展示字（片名 / 大写缩写）
-export const FONT_ORB = `'Orbitron', 'Audiowide', sans-serif`; // 数字 / 章序号 / HUD 计数
+export const FONT_ORB = `'Orbitron', 'Audiowide', 'Noto Sans', sans-serif`; // 数字 / 章序号 / HUD 计数
 export const FONT_MONO = `'SF Mono', Menlo, Consolas, monospace`; // 代码 / 等宽数字
 export const FONT_SERIF = `'Times New Roman', Times, serif`; // 公式
 export const FONT_EN = `'Helvetica Neue', Helvetica, Arial, sans-serif`;
 
 // ---- 语言开关（src/config.ts 的 VIDEO.lang）----
-/** 'zh' 中文片（默认）｜'en' 英文片。影响：字体压窄系数、基线补偿、文案与字幕预算（见 reference/narration-storyboard.md §5）。 */
+/** 'zh' 中文片（默认）｜'en' English｜'tr' Türkçe. Latin scripts are not squeezed. */
 export const LANG = VIDEO.lang ?? 'zh';
 /** 中文标题惯用 scaleX .8–.85 压窄；拉丁字母压窄会变形，英文片一律 1。 */
-export const SQUEEZE = LANG === 'en' ? 1 : 0.85;
+export const SQUEEZE = LANG === 'zh' ? 0.85 : 1;
 /** CJK 行盒 ascent 让墨迹比 top 低 3–7px，居中要预扣；拉丁不需要。 */
-export const TEXT_DY = LANG === 'en' ? 0 : -2;
+export const TEXT_DY = LANG === 'zh' ? -2 : 0;
 
 /** 在 Main 顶层挂一次；用 delayRender 等字体就绪。 */
 export const Fonts: React.FC = () => {
@@ -70,6 +72,7 @@ export const Fonts: React.FC = () => {
   React.useEffect(() => {
     Promise.all([
       new FontFace('Noto Sans SC', `url(${staticFile('fonts/NotoSansSC.ttf')})`, {weight: '100 900'} as FontFaceDescriptors).load(),
+      new FontFace('Noto Sans', `url(${staticFile('fonts/NotoSans.ttf')})`, {weight: '100 900'} as FontFaceDescriptors).load(),
       new FontFace('Exo 2', `url(${staticFile('fonts/Exo2-Italic.ttf')})`, {weight: '100 900', style: 'italic'} as FontFaceDescriptors).load(),
       new FontFace('Audiowide', `url(${staticFile('fonts/Audiowide-Regular.ttf')})`).load(),
       new FontFace('Orbitron', `url(${staticFile('fonts/Orbitron[wght].ttf')})`, {weight: '400 900'} as FontFaceDescriptors).load(),

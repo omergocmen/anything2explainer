@@ -29,3 +29,7 @@
 - 高：文字不可读/遮挡、整句无画面、事实错误、组件缺失（分镜表有而画面没有）、黑底盖幕底、空场（主体 <80px 持续 >45 帧）、运镜带动 HUD / 字幕。
 - 中：节拍偏差、样式不一致、衔接跳变、拼写、主体 <110px 持续 >45 帧、高光时刻主角无光、背景碎屑、运镜生硬或与 glitch 重叠。
 - 低：微调（间距/对齐/亮度）、可选优化。
+
+## Turkish language checks
+
+For `VIDEO.lang === 'tr'`, use `FONT_HEAVY` (bundled Noto Sans), `SQUEEZE=1` and `TEXT_DY=0`. Preserve `ÇĞIİÖŞÜçğıiöşü`; do not use ASCII transliteration or English case conversion. Keep subtitles ≤42 characters, chapter names short, and localize the HUD/title/rails. Verify the actual Turkish audio against subtitle changes, including apostrophized suffixes and any estimated boundary warnings. See `narration-storyboard.md` §2.6 and `style-guide.md` §3.2.

@@ -22,19 +22,19 @@
 
 ## 2. 配音（`scripts/tts_build.py`）
 - **跑之前先过 SKILL.md 的确认点 2（文案定稿）与确认点 3（配音）**：问一句用户有没有偏好的 TTS，没有就用默认，不要摆一堆选项让他挑。
-- 引擎（`TTS_ENGINE`，默认 `auto` 按解说词语言选）：
+- 引擎（`TTS_ENGINE`，默认 `auto` 按 `src/config.ts` 的 `lang` 选，不猜测文本语言）：
   - `edge` **中文默认**。edge-tts，`VOICE=zh-CN-YunxiNeural RATE=+8%`（男声，科普感）；可选 YunjianNeural（激昂）/ YunyangNeural（播报）/ XiaoxiaoNeural（女声）。有词级边界，字幕节拍最准。
   - `kokoro` **英文默认**。kokoro-82m 本地推理：`KOKORO_VOICE=am_liam KOKORO_LANG=a KOKORO_SPEED=1.0`——Liam，男声，与中文云希同定位。需 `pip install kokoro soundfile` + espeak-ng（macOS `brew install espeak-ng` / Linux `apt install espeak-ng`）。
   - kokoro 没有词边界 → 改为逐字幕块分别合成再拼接：块起始帧因此仍是精确的，但块界断句略生硬（`CHUNK_PAD` 调块间静音）。
   - `kokoro_onnx` / `piper`：Linux/ARM（树莓派）上 `kokoro` 装不动时的本地替代，都走逐块合成路径。`kokoro_onnx` 音色自然（`pip install kokoro-onnx` + `KOKORO_ONNX_MODEL` / `KOKORO_ONNX_VOICES`，`KOKORO_ONNX_VOICE` 默认 am_michael）；`piper` 最快但偏机械（`pip install piper-tts` + `PIPER_MODEL`）。两者都不认 `PRONOUNCE` 读音覆写。安装细节见 README「Linux / Raspberry Pi」。
   - 用户有偏好的 TTS（含真人配音 / 声音克隆）：不跑这个脚本，把成品放 `public/assets/<slug>/audio.wav`，自己按逐句/逐块时间轴填 `src/common/timeline.ts` 与 `subs.ts`（格式见文件头），接口一致。
 - 逐句合成 + WordBoundary → 字幕块起止帧；句间 GAP 10 帧、章前 CHAPTER_GAP 45、片头 LEAD 40、片尾 TAIL 90；音量归一到峰值 0.89。
-- 输出：`public/assets/<slug>/audio.wav`、`src/common/timeline.ts`（TOTAL_FRAMES / CHAPTER_STARTS / SENTENCES）、`src/common/subs.ts`、`script/timeline.json|md`。
+- 输出：`public/assets/<slug>/audio.wav`、`src/common/timeline.ts`（TOTAL_FRAMES / CHAPTER_STARTS / SENTENCES）、`src/common/subs.ts`、`script/timeline.json|md`、UTF-8 `script/subtitles.srt|vtt`。
 - 逐句缓存 `audio/cache/`，改一句只重合成一句。**分镜/构建开始后不要再改词**：所有帧号会变、构建组代码硬编码帧号。
 - 校验：字幕起点 vs 音频起点误差 ≈1 帧（可用 numpy 读 wav 找 onset 复核）。要换真人/克隆声（如 VoxCPM2 + 强制对齐）也走"逐句合成 + 词级时间戳"这套接口：自己在外面合成好，把成品与逐块帧号填进 `audio.wav` / `timeline.ts` / `subs.ts`。
 
 ## 2.5 英文片（`config.ts` 的 `lang: 'en'`）
-视觉体系、动效、构图与光的规则全部照用，只有下面这些量按语言换。**开工先把 `src/config.ts` 的 `lang` 改成 `'en'`**（`tts_build.py` 会对不上时打 ⚠），`title.rest` 留空 `''`。
+视觉体系、动效、构图与光的规则全部照用，只有下面这些量按语言换。**开工先把 `src/config.ts` 的 `lang` 改成 `'en'`**（配音与排版共用此语言设置），`title.rest` 留空 `''`。
 - **篇幅**（语速：`edge-tts en-US` +0% 实测 2.96 词/秒；**kokoro `am_liam` speed 1.0 实测 2.30 词/秒**（散文 2.25、缩写密集句 1.4–1.8；实测见 `lessons.md`），加留白后成片密度 ≈2.1 词/秒 → **kokoro 英文片按 ≈125 词/分钟写**，5 分钟 ≈640 词 / 48 句；下表是 edge-tts 口径，用 kokoro 时把词数乘 0.78）：
 
   | 时长 | 英文词数 | 句 / 镜头数 |
@@ -52,6 +52,16 @@
 - **英文标点**：Noto Sans SC 的弯引号与省略号是 1em 全宽字形，画面上用直引号与三个句点。
 - **排版**：不压窄、居中不预扣基线、宽度兜底，都由 `lang` 自动生效，见 `style-guide.md` §3.1。
 - 英文成片《RAG & Knowledge Bases》见 README 顶部视频（5′02″，kokoro `am_liam` 自然语速，由中文版逐镜头重排帧号而来）；过程文件（分镜、源码、QC）仍只有中文样片的，**视觉标尺看 `examples/rag/frames/`**（图形语言与语言无关）。
+
+## 2.6 Turkish films (`lang: 'tr'`)
+
+- Set `src/config.ts` explicitly to `lang: 'tr'` before synthesis. `TTS_ENGINE=auto` uses this setting, including for ASCII-only narration. It selects Edge TTS, `tr-TR-AhmetNeural`, `RATE=+0%`; optional female voice `tr-TR-EmelNeural`. Edge sends narration to Microsoft's online service. Kokoro engines do not support Turkish; use Edge, a Turkish Piper model, or the existing supplied-audio workflow.
+- Write natural Turkish, retain `ç ğ ı İ ö ş ü`, and explain unfamiliar abbreviations on first use. Use short sentences (roughly 12–18 words). Start with **110–140 words/minute as a drafting estimate**, then measure actual TTS duration; this is not a measured voice benchmark. Never reuse English/Chinese frame timings.
+- Subtitle blocks: **≤42 characters including spaces and punctuation**, split with `|` at word/phrase boundaries. Never split a word or a suffix such as `İstanbul'da`. Blocks are joined with spaces for speech. Long blocks trigger warnings; width fitting remains a fallback, not a substitute for editing.
+- The parser accepts UTF-8 with or without BOM and normalizes composed/decomposed letters to NFC. Timing matches preserve the Turkish dotted/dotless I distinction, normalize apostrophes and punctuation, and report unmatched boundary estimates. Preview any estimated blocks.
+- Localize all visible `config.ts` text (title, tagline, HUD, rails, credits). `title.en` may contain a Turkish subtitle despite its historical field name. Set `title.rest` to `''`, and `chapterTech` to short Turkish kickers or empty strings. Aim for chapter names ≤14 characters; check the progress bar when there are many chapters.
+- Body/labels/subtitles use bundled **Noto Sans**; Noto Sans SC lacks some Turkish letters. `SQUEEZE=1`, `TEXT_DY=0`. Audiowide and Exo 2 include Turkish glyphs. Avoid forced uppercase unless using Turkish-aware casing (`toLocaleUpperCase('tr-TR')`).
+- Outputs include burned-in subtitles plus UTF-8 `script/subtitles.srt` and `.vtt`, from exactly the same frame intervals. Font/license and setup details: [README_TR.md](../README_TR.md); small fixture: [examples/turkish](../examples/turkish/README.md).
 
 ## 3. 分镜（`script/storyboard_src.md` → `分镜表.md`）
 令牌：`{S12.from}` `{S12.to}` `{S12.c3}`（第 3 个字幕块起始帧）`{C2}`（第 2 章起始帧）`{TOTAL}`，可带 ±整数：`{S12.from-8}`。`python3 scripts/render_storyboard.py` 填帧号。
